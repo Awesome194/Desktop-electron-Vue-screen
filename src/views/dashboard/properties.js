@@ -17,23 +17,37 @@ function getTotalWorkedToday() {
 
 }
 
-function getJobsWorkedToday() {
-	let jobs = JSON.parse(localStorage.getItem('JobsWorkedToday')) 
+function getProjectsWorkedToday() {
+	let projects = JSON.parse(localStorage.getItem('projectsWorkedToday')) 
 	let today = new Date().toISOString().substr(0, 10);
-	if(!jobs || today != jobs.date) {
-		jobs = {
+	if(!projects || today != projects.date) {
+		projects = {
 			date: today,
 			items: []
 		}
-		localStorage.setItem('JobsWorkedToday', JSON.stringify(jobs))
+		localStorage.setItem('projectsWorkedToday', JSON.stringify(projects))
 	}
-	return jobs
+	return projects
+}
+
+
+function getTimePassed() {
+	let timePassed = JSON.parse(localStorage.getItem('timePassed')) 
+	let today = new Date().toISOString().substr(0, 10);
+	if(!timePassed || today != timePassed.date) {
+		timePassed = {
+			date: today,
+			time: 0
+		}
+		localStorage.setItem('projectsWorkedToday', JSON.stringify(timePassed))
+	}
+	return timePassed
 }
 
 const props = {
-	timeScreen: localStorage.getItem('timeScreen') ? parseInt(localStorage.getItem('timeScreen')) : 3600,
 	totalWorkedToday: getTotalWorkedToday(),
-	jobsWorkedToday: getJobsWorkedToday(),
+	projectsWorkedToday: getProjectsWorkedToday(),
+	timePassed: getTimePassed(),
 	tasksItemsPerPageList: [
 		{
 			text: 'All tasks',
@@ -64,22 +78,22 @@ const props = {
 		{
 			text: 'Title',
 			value: 'title',
+		},
+		{
+			text: 'Details',
+			value: 'details',
 			sortable: false
 		},
 		{
-			text: 'Description',
-			value: 'description',
-			sortable: false
-		},
-		{
-			text: 'Completed',
+			text: 'Status',
 			value: 'completed',
 			sortable: false,
 			align: 'center'
 		},
 		{
 			text: '',
-			value: 'actions'
+			value: 'actions',
+			sortable: false
 		}
 	]
 }

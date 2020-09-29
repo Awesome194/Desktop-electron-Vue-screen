@@ -1,31 +1,42 @@
 import LoginRequest from '../../requests/LoginRequest'
-import JobRequest from '../../requests/JobRequest'
-import times from './times'
+import ProjectRequest from '../../requests/ProjectRequest'
 import props from './properties'
 
 
 export default {
+	async beforeRouteEnter(to, from, next) { 
+		try {
+			let r = await axios.get('user')
+			let user = r.data.user
+			let company = r.data.company
+			next(vm => vm.getUserDetails(user, company))
+		} catch(e) {
+			ErrorHandler.render(e)
+			localStorage.removeItem('token')
+			window.axios.defaults.headers.common['Authorization'] = null
+			next({ name: 'login' })
+		}
+	},
 	data() {
 		return {
 			closing: false,
 			working: false,
 			stoping: false,
-			edit_timer: false,
-			times: times,
-			timeScreen: props.timeScreen,
 			totalWorkedToday: props.totalWorkedToday,
+			timePassed: props.timePassed,
+			lastScreenshot: 0,
 			timer: {
 				h: 0,
 				m: 0,
 				s: 0,
 				passed: 0
 			},
-			busyJob: false,
-			jobSelected: null,
-			jobsList: [],
-			searchJob: null,
-			jobsWorkedToday: props.jobsWorkedToday,
-			job: null,
+			busyProject: false,
+			projectSelected: null,
+			projectsList: [],
+			searchProject: null,
+			projectsWorkedToday: props.projectsWorkedToday,
+			project: null,
 
 			busyTask: false,
 			tasksItemsToShow: 20,
@@ -36,14 +47,23 @@ export default {
 			tasksCompleted: false,
 			tasksPage: 1,
 			searchTask: null,
+			taskSelected: null,
+			task: null,
+			completingTask: false,
+
+			company: {},
+			user: {}
 
 		}
 	},
 	created() {
-		this.getJobs()
+		this.getProjects()
 	},
 
 	watch: {
+		timePassed(val) {
+			localStorage.setItem('projectsWorkedToday', JSON.stringify(val))
+		},
 		tasksCompleted(val) {
 			let totalTasks = this.totalTasks
 			if(val) {
@@ -72,14 +92,17 @@ export default {
 					this.working = true
 				}
 			} else {
+				this.stoping = false
 				this.start()
+				let win = this.$electron.remote.getCurrentWindow()
+				win.minimize()
 			}
 		} 
 	},
 
 	computed: {
 		busy() {
-			if(this.busyJob || this.working || this.busyTask)
+			if(this.busyProject || this.working || this.busyTask)
 				return true
 			return false
 		},
@@ -89,10 +112,10 @@ export default {
 			let m = mt < 10 ? '0'+mt : mt
 			return h + ':' + m
 		},
-		jobTitle() {
-			if(!this.job)
-				return 'No Selected Job'
-			return this.job.title
+		projectTitle() {
+			if(!this.project)
+				return 'No Selected project'
+			return this.project.title
 		},
 
 		taskItemsPerPage() {
@@ -151,22 +174,89 @@ export default {
 	},
 
 	methods: {
-		getJobs() {
-			this.jobsList = []
-			this.busyJob = true
-			JobRequest.index(this)
+		getUserDetails(user, company) {
+			this.user = user
+			this.company = company
+		},
+		getProjects() {
+			this.busyProject = true
+			this.tasksList = []
+			this.totalTasks = []
+			this.project = null
+			this.projectSelected = null
+			this.projectsList = []
+			ProjectRequest.index(this)
 		},
 
-		selectJob(job) {
-			this.jobSelected = 'job-sel-'+job.id
-			this.job = job
-			let id = job.id
-			this.getTasks(id)
+		selectProject(project, start) {
+			let projectSelected = this.projectSelected
+			if(projectSelected !== 'project-sel-'+project.id) {
+				this.projectSelected = 'project-sel-'+project.id
+				this.project = project
+				let id = project.id
+				this.getTasks(id)
+			}
+			
+			if(start) {
+				this.working = true
+				this.stoping = false
+			} else {
+				this.stoping = true
+			}
+			
+		},
+		selectTask(task, start) {
+			let taskSelected = this.taskSelected
+			if(taskSelected !== 'task-sel-'+task.id) {
+				this.taskSelected = 'task-sel-'+task.id
+				this.task = task
+			}
+			
+			if(start) {
+				this.working = true
+				this.stoping = false
+			} else {
+				this.stoping = true
+			}
+		},
+
+		async completeTask(task) {
+			let cm = 'Are you sure the task is complete?'
+			let c = await NotificationHandler.confirm(cm)
+			if(c) {
+				let id = task.id
+				let r = await ProjectRequest.completeTask(id)
+				if(r) {
+					let msj = r.data.message
+					this.taskSelected = null
+					this.task = null
+					NotificationHandler.simpleSuccess(msj)
+					$.each(this.totalTasks, (i, t) => {
+						if(t.id == id) {
+							t.completed = true
+						}
+					});
+					this.$nextTick(() => {
+						this.tasksList = []
+						let totalTasks = this.totalTasks
+						if(this.tasksCompleted) {
+							this.tasksList = totalTasks
+						} else {
+							let tasks = []
+							$.each(totalTasks, (i, t) => {
+								if(!t.completed)
+									tasks.push(t)
+							});
+							this.tasksList = tasks
+						}
+					})
+				}
+			}
 		},
 
 		getTasks(id) {
 			this.busyTask = true
-			JobRequest.tasks(this, id)
+			ProjectRequest.tasks(this, id)
 		},
 
 		start() {
@@ -189,12 +279,27 @@ export default {
 					this.changeTimer()
 					this.$nextTick(() => {
 						let passed = this.timer.passed
-						let timeScreen = this.timeScreen
+						let timeScreen = this.company.time
 						if(passed == timeScreen) {
 							NotificationHandler.simpleSuccess('Captured')
 							this.timer.passed = 0
+							let task_id
+							if(this.task) {
+								task_id = this.task.id
+							} else {
+								task_id = null
+							}
+							let data = {
+								from: this.lastScreenshot,
+								to: this.timePassed.time,
+								task_id: task_id,
+								project_id: this.project.id
+							}
+							CaptureHandler.render(data)
+							this.lastScreenshot = this.timePassed.time
 						}
 					})
+
 				}
 
 				setTimeout(() => {
@@ -203,9 +308,9 @@ export default {
 			}
 		},
 
-		changeTimeToJob() {
-			let job = this.job
-			let items  = job.time.split(':')
+		changeTimeToProject() {
+			let project = this.project
+			let items  = project.time.split(':')
 			let h = parseInt(items[0])
 			let tMins = parseInt(items[1])
 			let mins, time, min
@@ -221,15 +326,15 @@ export default {
 			min = mins < 10 ? '0'+mins : mins
 
 			time = h+':'+min
-			job.time = time
-			let wJobs = this.jobsWorkedToday.items
+			project.time = time
+			let wProjects = this.projectsWorkedToday.items
 
-			let newJob, found = false
-			if(wJobs.length > 0) {
-				for(let j of wJobs) { 
-					if(j.id == job.id) {
+			let newProject, found = false
+			if(wProjects.length > 0) {
+				for(let p of wProjects) { 
+					if(p.id == project.id) {
 						found = true
-						j.time = time
+						p.time = time
 						break
 					} else {
 						found = false
@@ -237,40 +342,40 @@ export default {
 				}
 
 				if(!found) {
-					newJob = {
-						id: job.id,
+					newProject = {
+						id: project.id,
 						time: time
 					}
-					wJobs.push(newJob)
+					wProjects.push(newProject)
 				}
 			} else {
-				newJob = {
-					id: job.id,
+				newProject = {
+					id: project.id,
 					time: time
 				}
-				wJobs.push(newJob)
+				wProjects.push(newProject)
 			}
 
-			localStorage.setItem('JobsWorkedToday', JSON.stringify(this.jobsWorkedToday))
+			localStorage.setItem('projectsWorkedToday', JSON.stringify(this.projectsWorkedToday))
 		},
-		getJobsTimeToday() {
-			for(let aJob of this.jobsList) {
-				let wJobs = this.jobsWorkedToday.items
+		getProjectsTimeToday() {
+			for(let aProject of this.projectsList) {
+				let wProjects = this.projectsWorkedToday.items
 				let time
-				if(wJobs.length > 0) {
-					for(let j of wJobs) {
-						if(j.id == aJob.id) {
+				if(wProjects.length > 0) {
+					for(let j of wProjects) {
+						if(j.id == aProject.id) {
 							time = j.time
-							aJob.time = time
+							aProject.time = time
 							break;
 						} else {
 							time = 0+':00'
-							aJob.time = time
+							aProject.time = time
 						}
 					}
 				} else {
 					time = 0+':00'
-					aJob.time = time
+					aProject.time = time
 				}
 			}
 		},
@@ -282,26 +387,28 @@ export default {
 			let tm = this.timer.m
 			let ts = this.timer.s
 
-			if(ts > 59 && tm < 59) {
+			if(ts > 59) {
 				this.timer.s = 0
 				this.timer.m += 1
-				//
-				this.changeTimeToJob()
+
+				this.changeTimeToProject()
 				let twm = this.totalWorkedToday.mins += 1
 				if(twm > 59) {
 					this.totalWorkedToday.mins = 0
 					this.totalWorkedToday.hours += 1
 				}
 				localStorage.setItem('totalWorkedToday', JSON.stringify(this.totalWorkedToday))
-				//
-			} 
+			}
 
 			if(tm > 59) {
+				this.timer.s = 0
 				this.timer.m = 0
 				this.timer.h += 1
-			} 
+			}
 
+		
 			this.timer.passed += 1
+			this.timePassed.time += 1
 		},
 
 		async logout() {

@@ -6,10 +6,12 @@ import router from './router'
 import store from './store'
 import vuetify from './plugins/vuetify';
 
+Vue.use(window.require('vue-electron'))
 
-const baseURL = process.env.NODE_ENV === 'production' 
-				? 'http://tasks-app.biteeb.co.ve/api/desktop/' //'http://localhost/TaskApp/public/api/desktop/'
-				: 'http://tasks-app.biteeb.co.ve/api/desktop/'
+
+const baseURL = process.env.NODE_ENV === 'production' ?
+    'http://localhost/TaskApp/public/api/desktop/' :
+    'http://localhost/TaskApp/public/api/desktop/'
 
 window.$ = window.jQuery = require('jquery')
 
@@ -22,10 +24,11 @@ Vue.config.productionTip = false
 // Handlers
 window.NotificationHandler = require('./handlers/NotificationHandler').default
 window.ErrorHandler = require('./handlers/ErrorHandler').default
+window.CaptureHandler = require('./handlers/CaptureHandler').default
 
 new Vue({
-  router,
-  store,
-  vuetify,
-  render: function (h) { return h(App) }
+    router,
+    store,
+    vuetify,
+    render: function(h) { return h(App) }
 }).$mount('#app')

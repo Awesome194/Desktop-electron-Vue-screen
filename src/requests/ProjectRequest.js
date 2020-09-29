@@ -1,20 +1,20 @@
-class JobRequest
+class ProjectRequest
 {
 	index(vm) {
-		axios.get('jobs-list').then(r => {
-			vm.jobsList = r.data.list
+		axios.get('projects-list').then(r => {
+			vm.projectsList = r.data.list
 			vm.$nextTick(() => {
-				vm.getJobsTimeToday()
-				vm.busyJob = false
+				vm.getProjectsTimeToday()
+				vm.busyProject = false
 			})
 		}).catch(e =>{
 			ErrorHandler.render(e)
-			vm.busyJob = false
+			vm.busyProject = false
 		})
 	}
 
 	tasks(vm, id) {
-		axios.get('job-tasks-list/'+id).then(r => {
+		axios.get('project-tasks-list/'+id).then(r => {
 			vm.$nextTick(() => {
 				let totalTasks = r.data.list
 				if(vm.tasksCompleted) {
@@ -36,6 +36,16 @@ class JobRequest
 			vm.busyTask = false
 		})
 	}
+
+	async completeTask(id) {
+		try {
+			let r = await axios.get('complete-task/'+id)
+			return r
+		} catch(e) {
+			ErrorHandler.render(e)
+			return null
+		}
+	}
 }
 
-export default new JobRequest()
+export default new ProjectRequest()
